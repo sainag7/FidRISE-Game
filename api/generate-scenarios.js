@@ -73,7 +73,10 @@ export default async function handler(req, res) {
 
   const summary = buildSummary(answers);
 
-  const systemPrompt = `You are a financial education game designer for a hackathon project targeting first-year college women. Generate exactly 18 financial scenarios for a student with this profile:\n${summary}\n\nRules:\n- Each scenario must be genuinely hard — not obviously right or wrong\n- Cover a variety of topics: budgeting, first credit card, student loans, side hustles, investing, internship salary negotiation, emergency funds, subscriptions, FOMO spending, peer pressure, benefits enrollment, and compound interest\n- Scenarios should escalate in complexity — start simple (move-in week budgeting, first credit card offer) and build to complex (salary negotiation, 401k enrollment, investing)\n- Tone: relatable, slightly witty, specific — not corporate or preachy\n- All three choices must be tempting — none should be obviously dumb. Two are wrong, one is correct.\n- Exactly ONE of choiceA/choiceB/choiceC must have isCorrect: true. The other two must have isCorrect: false.\n\nReturn ONLY valid JSON — no markdown, no preamble, no backticks. Format:\n[\n  {\n    "id": 1,\n    "timestamp": "September — Move-In Week",\n    "scenario": "2-3 sentence vivid scenario description",\n    "choiceA": { "text": "option text", "isCorrect": true },\n    "choiceB": { "text": "option text", "isCorrect": false },\n    "choiceC": { "text": "option text", "isCorrect": false },\n    "explanation": "Why the wrong answers are wrong and what the right choice does long-term. Include a specific number or projection. 2-3 sentences.",\n    "counterfactual": "If you\'d chosen [a wrong choice], by 2035 you\'d likely [specific financial consequence]. 1-2 sentences.",\n    "impact": {\n      "savings": 200,\n      "creditScore": 0,\n      "debt": -500\n    }\n  }\n]\n\nImpact values represent the correct choice\'s effect: savings range -800 to +800, creditScore range -40 to +40 (0 if not credit-related), debt range -2000 to +2000. Correct choice should generally have positive impact.`;
+  const systemPrompt = `You are a financial education game designer for a hackathon project targeting first-year college women. Generate exactly 10 financial scenarios for a student with this profile:\n${summary}\n\nRules:\n- Each scenario must be genuinely hard — not obviously right or wrong\n- Cover a variety of topics: budgeting, first credit card, student loans, side hustles, investing, internship salary negotiation, emergency funds, subscriptions, FOMO spending, peer pressure, benefits enrollment, and compound interest\n- Scenarios should escalate in complexity — start simple (move-in week budgeting, first credit card offer) and build to complex (salary negotiation, 401k enrollment, investing)\n- Tone: relatable, slightly witty, specific — not corporate or preachy\n- All three choices must be tempting — none should be obviously dumb. Two are wrong, one is correct.\n- Exactly ONE of choiceA/choiceB/choiceC must have isCorrect: true. The other two must have isCorrect: false.\n- IMPORTANT: Randomize which of choiceA/choiceB/choiceC is correct across scenarios. Roughly one-third of scenarios should have A correct, one-third B correct, and one-third C correct. Do NOT always put the correct answer in position A.\n- CRITICAL VARIETY REQUIREMENT: Each generation must produce meaningfully different scenarios from any prior generation, even for the same player profile. Vary the specific dollar amounts (e.g. textbook cost: not always $340; subscription totals: not always $143), the friend/character names, the brands/stores mentioned, the framing of each dilemma, and which topics get emphasized. Pick a fresh subset of topics from the list above rather than always covering the same ones in the same order. Do NOT reuse phrasing across runs.\n\nReturn ONLY valid JSON — no markdown, no preamble, no backticks. Format:\n[\n  {\n    "id": 1,\n    "timestamp": "September — Move-In Week",\n    "scenario": "2-3 sentence vivid scenario description",\n    "choiceA": { "text": "option text", "isCorrect": true },\n    "choiceB": { "text": "option text", "isCorrect": false },\n    "choiceC": { "text": "option text", "isCorrect": false },\n    "explanation": "Why the wrong answers are wrong and what the right choice does long-term. Include a specific number or projection. 2-3 sentences.",\n    "counterfactual": "If you\'d chosen [a wrong choice], by 2035 you\'d likely [specific financial consequence]. 1-2 sentences.",\n    "impact": {\n      "savings": 200,\n      "creditScore": 0,\n      "debt": -500\n    }\n  }\n]\n\nImpact values represent the correct choice\'s effect: savings range -800 to +800, creditScore range -40 to +40 (0 if not credit-related), debt range -2000 to +2000. Correct choice should generally have positive impact.`;
+
+  const variationSeed = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const userMessage = `Generate the 10 scenario cards for this player profile. Return only the JSON array.\n\nVariation seed: ${variationSeed}. Use this seed to make this generation distinct from any previous generation: vary the specific dollar amounts, friend/character names, brands and stores referenced, the framing of each dilemma, and which subset of topics you emphasize. Do not repeat verbatim phrasing from prior generations.`;
 
   try {
     const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -86,8 +89,9 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-5-20251001',
         max_tokens: 8192,
+        temperature: 1.0,
         system: systemPrompt,
-        messages: [{ role: 'user', content: 'Generate the 18 scenario cards for this player profile. Return only the JSON array.' }],
+        messages: [{ role: 'user', content: userMessage }],
       }),
     });
 
@@ -106,7 +110,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Insufficient scenarios returned' });
     }
 
-    return res.status(200).json(parsed.slice(0, 18));
+    return res.status(200).json(parsed.slice(0, 10));
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Internal server error' });
   }

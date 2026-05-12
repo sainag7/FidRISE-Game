@@ -117,7 +117,27 @@ async function fetchScenarios(answers) {
 
   const parsed = await res.json();
   if (!Array.isArray(parsed) || parsed.length < 10) throw new Error('Insufficient scenarios');
-  return parsed.slice(0, 18);
+  return parsed.slice(0, 10);
+}
+
+// ─── Shuffle choice positions so the correct answer isn't always A ────────────
+
+function shuffleScenarioChoices(scenario) {
+  const choices = [
+    { ...scenario.choiceA },
+    { ...scenario.choiceB },
+    { ...scenario.choiceC },
+  ];
+  for (let i = choices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [choices[i], choices[j]] = [choices[j], choices[i]];
+  }
+  return {
+    ...scenario,
+    choiceA: choices[0],
+    choiceB: choices[1],
+    choiceC: choices[2],
+  };
 }
 
 // ─── Fallback scenarios ──────────────────────────────────────────────────────
@@ -130,7 +150,7 @@ const FALLBACK_SCENARIOS = [
     choiceB: { text: "Skip it — credit cards are how people go into debt", isCorrect: false },
     choiceC: { text: 'Take the card but use it freely — you can always pay later', isCorrect: false },
     explanation: "Avoiding credit entirely means arriving at graduation with no credit history, which makes renting an apartment and getting good loan rates harder. A student card paid in full monthly costs nothing and builds your score significantly over 4 years.",
-    counterfactual: "If you'd skipped credit entirely, by 2035 you'd likely face higher interest rates on car loans and mortgages — costing you tens of thousands over time.",
+    counterfactual: "If you'd skipped credit entirely, by 2036 you'd likely face higher interest rates on car loans and mortgages — costing you tens of thousands over time.",
     impact: { savings: 0, creditScore: 25, debt: 0 },
   },
   {
@@ -140,7 +160,7 @@ const FALLBACK_SCENARIOS = [
     choiceB: { text: 'Buy new — you need them guaranteed and fast', isCorrect: false },
     choiceC: { text: 'Buy the digital version for $120 — cheaper and instant', isCorrect: false },
     explanation: "Saving $255 on textbooks each semester adds up to over $2,000 across 4 years — money that could sit in a high-yield savings account earning interest.",
-    counterfactual: "If you'd always bought new textbooks, by 2035 that habit of overpaying for convenience would have cost you $8,000+ in unnecessary spending.",
+    counterfactual: "If you'd always bought new textbooks, by 2036 that habit of overpaying for convenience would have cost you $8,000+ in unnecessary spending.",
     impact: { savings: 255, creditScore: 0, debt: 0 },
   },
   {
@@ -150,7 +170,7 @@ const FALLBACK_SCENARIOS = [
     choiceB: { text: 'Go — you only live once and these memories matter', isCorrect: false },
     choiceC: { text: "Put the $600 on a credit card so you keep your savings intact", isCorrect: false },
     explanation: "Wiping out your emergency fund for a trip means one unexpected expense — a doctor visit, a car repair, a broken laptop — puts you in credit card debt. Picking up shifts instead adds to your cushion.",
-    counterfactual: "If you'd made a habit of FOMO spending, by 2035 you'd likely have carried credit card debt in your 20s, paying thousands extra in interest.",
+    counterfactual: "If you'd made a habit of FOMO spending, by 2036 you'd likely have carried credit card debt in your 20s, paying thousands extra in interest.",
     impact: { savings: 300, creditScore: 0, debt: 0 },
   },
   {
@@ -160,7 +180,7 @@ const FALLBACK_SCENARIOS = [
     choiceB: { text: "Spend some now — you've been stressed and deserve it", isCorrect: false },
     choiceC: { text: 'Invest it all in individual stocks for higher returns', isCorrect: false },
     explanation: "At 4.5% APY, $1,200 grows to about $1,470 in five years with zero effort. Building the habit of saving windfalls is one of the biggest wealth predictors.",
-    counterfactual: "If you'd spent your refund checks throughout college, by 2035 you'd be starting from near zero savings instead of having a head start.",
+    counterfactual: "If you'd spent your refund checks throughout college, by 2036 you'd be starting from near zero savings instead of having a head start.",
     impact: { savings: 1200, creditScore: 0, debt: 0 },
   },
   {
@@ -170,7 +190,7 @@ const FALLBACK_SCENARIOS = [
     choiceB: { text: "Keep them — you use most of them and it's not that much", isCorrect: false },
     choiceC: { text: 'Keep everything but call each company to negotiate a discount', isCorrect: false },
     explanation: "$143/month in subscriptions is $1,716/year. Cutting to $15/month saves $1,548 annually — that's a plane ticket, an emergency fund boost, or a year of compound interest growth.",
-    counterfactual: "If you'd let subscriptions pile up unchecked through your 20s, by 2035 you'd have spent $15,000+ on services you barely used.",
+    counterfactual: "If you'd let subscriptions pile up unchecked through your 20s, by 2036 you'd have spent $15,000+ on services you barely used.",
     impact: { savings: 130, creditScore: 0, debt: 0 },
   },
   {
@@ -180,7 +200,7 @@ const FALLBACK_SCENARIOS = [
     choiceB: { text: 'Pay the $25 minimum, keep cash on hand', isCorrect: false },
     choiceC: { text: 'Pay $200 — a reasonable middle ground', isCorrect: false },
     explanation: "At 24% APR, carrying any balance costs you money every single day. A partial payment on $380 still leaves $180 accruing 24% interest. Paying in full monthly means credit cards are free money tools, not debt traps.",
-    counterfactual: "If you'd developed a partial-payment habit, by 2035 you could have paid $5,000+ in interest on balances that were never that large to begin with.",
+    counterfactual: "If you'd developed a partial-payment habit, by 2036 you could have paid $5,000+ in interest on balances that were never that large to begin with.",
     impact: { savings: -380, creditScore: 15, debt: 0 },
   },
   {
@@ -190,7 +210,7 @@ const FALLBACK_SCENARIOS = [
     choiceB: { text: "Pass — you're already busy and need downtime", isCorrect: false },
     choiceC: { text: 'Take the gig but spend the extra income as a treat-yourself fund', isCorrect: false },
     explanation: "An extra $700/month directed toward debt is transformative. Over a year that's $8,400 — enough to eliminate a semester of loans and save thousands in interest.",
-    counterfactual: "If you'd avoided side income opportunities throughout college, by 2035 you'd be starting your 30s with significantly more debt and less savings than peers who earned while studying.",
+    counterfactual: "If you'd avoided side income opportunities throughout college, by 2036 you'd be starting your 30s with significantly more debt and less savings than peers who earned while studying.",
     impact: { savings: 700, creditScore: 0, debt: -500 },
   },
   {
@@ -200,7 +220,7 @@ const FALLBACK_SCENARIOS = [
     choiceB: { text: "Accept $18/hr — you don't want to seem greedy on your first offer", isCorrect: false },
     choiceC: { text: 'Counter at $25/hr — swing for the fences', isCorrect: false },
     explanation: "Recruiters almost always expect negotiation. The worst outcome is they say no — you still get the job. $3/hr over a 10-week internship is $1,200. The habit of negotiating reasonably means you'll earn $1M+ more over a career.",
-    counterfactual: "If you'd never learned to negotiate, by 2035 you'd likely have left $200,000+ on the table across your career in salary, raises, and benefits.",
+    counterfactual: "If you'd never learned to negotiate, by 2036 you'd likely have left $200,000+ on the table across your career in salary, raises, and benefits.",
     impact: { savings: 800, creditScore: 0, debt: 0 },
   },
   {
@@ -210,7 +230,7 @@ const FALLBACK_SCENARIOS = [
     choiceB: { text: "Skip it — you're only there 10 weeks and need the take-home pay", isCorrect: false },
     choiceC: { text: 'Contribute just $200 — get some match without locking up too much cash', isCorrect: false },
     explanation: "Employer 401k match is a 100% instant return on your contribution — there is no better investment. That $1,200 free match, invested at 22, grows to over $12,000 by retirement. Contributing less means leaving free money on the table.",
-    counterfactual: "If you'd skipped employer matches throughout early career, by 2035 you'd have left $30,000+ in free money unclaimed.",
+    counterfactual: "If you'd skipped employer matches throughout early career, by 2036 you'd have left $30,000+ in free money unclaimed.",
     impact: { savings: 500, creditScore: 0, debt: 0 },
   },
   {
@@ -219,7 +239,7 @@ const FALLBACK_SCENARIOS = [
     choiceA: { text: 'Put $1,000 in an index fund, keep $1,000 as emergency savings', isCorrect: true },
     choiceB: { text: 'Try stock picking — higher risk, higher reward at your age', isCorrect: false },
     choiceC: { text: 'Put all $2,000 in crypto — maximum upside while you\'re young', isCorrect: false },
-    explanation: "Over any 20-year period, over 90% of individual stock pickers underperform the index. $1,000 invested at 19 in VOO is projected to be ~$8,000 by 2035 with no effort. Keeping $1,000 liquid ensures one emergency doesn't spiral into debt.",
+    explanation: "Over any 20-year period, over 90% of individual stock pickers underperform the index. $1,000 invested at 19 in VOO is projected to be ~$8,000 by 2036 with no effort. Keeping $1,000 liquid ensures one emergency doesn't spiral into debt.",
     counterfactual: "If you'd tried to beat the market through your 20s, you'd statistically end up with less money and more stress than if you'd just bought the index.",
     impact: { savings: 0, creditScore: 0, debt: 0 },
   },
@@ -227,13 +247,26 @@ const FALLBACK_SCENARIOS = [
 
 // ─── Score & forecast helpers ─────────────────────────────────────────────────
 
-function calculateScore(metrics, correctAnswers, totalScenarios) {
-  const n = Math.max(1, totalScenarios || 18);
+function calculateScore(metrics, correctAnswers, totalScenarios, startingMetrics) {
+  const n = Math.max(1, totalScenarios || 10);
   const { savings, creditScore, debt } = metrics;
-  const knowledge = (correctAnswers / n) * 65;
-  const savingsPts = Math.min(1, savings / 10000) * 15;
-  const creditPts = creditScore === null ? 0 : ((creditScore - 580) / 270) * 12;
-  const debtPts = Math.max(0, 1 - debt / 50000) * 8;
+  const start = startingMetrics || { savings: 0, creditScore: null, debt: 0 };
+
+  // Knowledge dominates: 100% correct guarantees an A on its own.
+  const knowledge = (correctAnswers / n) * 85;
+
+  // Bonus points are improvement-based, not absolute.
+  const savingsDelta = savings - (start.savings || 0);
+  const savingsPts = Math.max(0, Math.min(1, savingsDelta / 4000)) * 7;
+
+  const creditPts = creditScore === null ? 0
+    : Math.max(0, Math.min(1, (creditScore - 580) / 120)) * 4;
+
+  const debtReduction = (start.debt || 0) - debt;
+  const debtPts = start.debt > 0
+    ? Math.max(0, Math.min(1, debtReduction / Math.max(1, start.debt))) * 4
+    : 4;
+
   return Math.min(100, Math.max(0, Math.round(knowledge + savingsPts + creditPts + debtPts)));
 }
 
@@ -248,10 +281,10 @@ function getGrade(score) {
 function getTagline(score) {
   if (score >= 70) return "You're on track to be debt-free by 29 — compound interest is working for you.";
   if (score >= 55) return "You're building a foundation — a few habit tweaks now could add $40K to your net worth by 35.";
-  return "Your 2035 self needs you to start now. Even $50/month invested today changes everything.";
+  return "Your 2036 self needs you to start now. Even $50/month invested today changes everything.";
 }
 
-function get2035Projections(metrics, answers, score) {
+function get2036Projections(metrics, answers, score) {
   const major = answers?.q3;
   const highEarner = major === 'stem' || major === 'business' || major === 'healthcare';
 
@@ -390,6 +423,7 @@ const INITIAL_STATE = {
   correctAnswers: 0,
   creditInitialized: false,
   metrics: { savings: 0, creditScore: null, debt: 0 },
+  startingMetrics: { savings: 0, creditScore: null, debt: 0 },
   metricDeltas: { savings: null, creditScore: null, debt: null },
   showShareModal: false,
 };
@@ -428,10 +462,6 @@ export default function App() {
   const [state, setState] = useState(INITIAL_STATE);
 
   const set = (changes) => setState(prev => ({ ...prev, ...changes }));
-  const setMetrics = (m) => setState(prev => ({
-    ...prev,
-    metrics: { ...prev.metrics, ...m },
-  }));
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -453,12 +483,15 @@ export default function App() {
   function transitionToLoading(answers) {
     set({ screen: 'loading' });
     const metrics = calculateStartingMetrics(answers);
-    setMetrics(metrics);
+    set({ metrics, startingMetrics: metrics });
     fetchScenarios(answers)
-      .then(scenarios => set({ scenarios, screen: 'game' }))
+      .then(scenarios => set({ scenarios: scenarios.map(shuffleScenarioChoices), screen: 'game' }))
       .catch(err => {
         console.error('API error, using fallback:', err.message);
-        set({ scenarios: FALLBACK_SCENARIOS, apiError: err.message, screen: 'game' });
+        const shuffled = [...FALLBACK_SCENARIOS]
+          .sort(() => Math.random() - 0.5)
+          .map(shuffleScenarioChoices);
+        set({ scenarios: shuffled, apiError: err.message, screen: 'game' });
       });
   }
 
@@ -539,10 +572,10 @@ export default function App() {
           fontSize: 22, fontWeight: 800, color: C.text,
           lineHeight: 1.3, marginBottom: 12,
         }}>
-          Want to see your finances in 2035?
+          Want to see your finances in 2036?
         </p>
         <p style={{ fontSize: 15, color: C.muted, lineHeight: 1.5 }}>
-          Make 18 real money moves.<br />See where you land.
+          Make 10 real money moves.<br />See where you land.
         </p>
       </div>
 
@@ -642,7 +675,7 @@ export default function App() {
         Building your story…
       </p>
       <p style={{ fontSize: 14, color: C.muted, textAlign: 'center' }}>
-        Personalizing 18 financial scenarios just for you
+        Personalizing 10 financial scenarios just for you
       </p>
     </div>
   );
@@ -710,6 +743,21 @@ export default function App() {
             {state.currentScenarioIndex + 1} / {total}
           </span>
         </div>
+
+        {state.apiError && (
+          <div style={{
+            background: '#FEF3C7',
+            borderBottom: `1px solid #FDE68A`,
+            color: '#92400E',
+            fontSize: 11,
+            fontWeight: 600,
+            padding: '6px 16px',
+            textAlign: 'center',
+            letterSpacing: 0.2,
+          }}>
+            ⚠️ Offline mode — Claude wasn't reachable, using built-in scenarios
+          </div>
+        )}
 
         {/* Metrics dashboard */}
         <div style={{ padding: '14px 16px 8px', background: C.card, borderBottom: `1px solid ${C.border}` }}>
@@ -867,14 +915,18 @@ export default function App() {
   };
 
   const renderForecast = () => {
-    const score = calculateScore(state.metrics, state.correctAnswers, state.scenarios.length);
+    const score = calculateScore(state.metrics, state.correctAnswers, state.scenarios.length, state.startingMetrics);
     const { grade, label, color } = getGrade(score);
     const tagline = getTagline(score);
-    const { netWorth, projectedCredit, monthlyDisplay } = get2035Projections(state.metrics, state.answers, score);
+    const { netWorth, projectedCredit, monthlyDisplay } = get2036Projections(state.metrics, state.answers, score);
 
+    // Growth rate is driven by how well the player played:
+    // score 0 → -3%/yr (curve trends down), score 100 → +8%/yr (steep up).
+    const rate = -0.03 + (score / 100) * 0.11;
+    const startingValue = Math.max(state.metrics.savings, 100);
     const chartData = Array.from({ length: 11 }, (_, i) => ({
       year: 2025 + i,
-      savings: Math.round(state.metrics.savings * Math.pow(1.06, i)),
+      savings: Math.round(startingValue * Math.pow(1 + rate, i)),
     }));
 
     const statBox = (label, value, sub) => (
@@ -902,7 +954,7 @@ export default function App() {
           textAlign: 'center', color: '#FFF',
         }}>
           <p style={{ fontSize: 13, fontWeight: 600, opacity: 0.85, marginBottom: 6, letterSpacing: 0.5 }}>
-            YOUR 2035 FINANCIAL FORECAST
+            YOUR 2036 FINANCIAL FORECAST
           </p>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
             <FidRiseLogo size="md" white />
@@ -939,7 +991,7 @@ export default function App() {
         <div style={{ padding: '20px 16px' }}>
           {/* Stat boxes */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-            {statBox('Net Worth', netWorth, '2035 projection')}
+            {statBox('Net Worth', netWorth, '2036 projection')}
             {statBox('Credit Score', projectedCredit, 'projected')}
             {statBox('Monthly Freedom', monthlyDisplay, 'after bills')}
           </div>
@@ -959,7 +1011,7 @@ export default function App() {
           {/* Savings growth chart */}
           <div style={{ ...card, marginBottom: 24 }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 12 }}>
-              Savings Growth 2025 → 2035
+              Savings Growth 2025 → 2036
             </p>
             <ResponsiveContainer width="100%" height={130}>
               <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
@@ -1004,9 +1056,9 @@ export default function App() {
   };
 
   const renderShareModal = () => {
-    const score = calculateScore(state.metrics, state.correctAnswers, state.scenarios.length);
+    const score = calculateScore(state.metrics, state.correctAnswers, state.scenarios.length, state.startingMetrics);
     const { grade, label } = getGrade(score);
-    const { netWorth, projectedCredit, monthlyDisplay } = get2035Projections(state.metrics, state.answers, score);
+    const { netWorth, projectedCredit, monthlyDisplay } = get2036Projections(state.metrics, state.answers, score);
 
     return (
       <div style={{
@@ -1045,7 +1097,7 @@ export default function App() {
             </div>
 
             <p style={{ fontSize: 13, opacity: 0.8, marginBottom: 20, letterSpacing: 0.5, textAlign: 'center' }}>
-              MY 2035 FINANCIAL FORECAST
+              MY 2036 FINANCIAL FORECAST
             </p>
 
             {/* Score */}
@@ -1087,7 +1139,7 @@ export default function App() {
             </div>
 
             <p style={{ fontSize: 11, opacity: 0.6, textAlign: 'center' }}>
-              https://fid-rise-game.vercel.app/
+              fid-rise-game.vercel.app/
             </p>
           </div>
 
