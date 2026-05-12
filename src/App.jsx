@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -101,50 +101,21 @@ function calculateStartingMetrics(answers) {
   return { savings, creditScore: null, debt };
 }
 
-function buildCharacterSummary(answers) {
-  const bg = QUESTIONS[0].options.find(o => o.value === answers.q0)?.label || answers.q0;
-  const sc = QUESTIONS[1].options.find(o => o.value === answers.q1)?.label || answers.q1;
-  const lv = QUESTIONS[2].options.find(o => o.value === answers.q2)?.label || answers.q2;
-  const mj = QUESTIONS[3].options.find(o => o.value === answers.q3)?.label || answers.q3;
-  const jb = QUESTIONS[4].options.find(o => o.value === answers.q4)?.label || answers.q4;
-  const m = calculateStartingMetrics(answers);
-  return `Background: ${bg}\nScholarship: ${sc}\nLiving: ${lv}\nMajor: ${mj}\nJob: ${jb}\nStarting savings: $${m.savings.toLocaleString()}\nStarting debt: $${m.debt.toLocaleString()}\nCredit: No Credit Yet`;
-}
+// ─── Anthropic API (via serverless function) ──────────────────────────────────
 
-// ─── Anthropic API ───────────────────────────────────────────────────────────
-
-async function fetchScenarios(answers, apiKey) {
-  const summary = buildCharacterSummary(answers);
-
-  const systemPrompt = `You are a financial education game designer for a hackathon project targeting first-year college women. Generate exactly 18 financial scenarios for a student with this profile:\n${summary}\n\nRules:\n- Each scenario must be genuinely hard — not obviously right or wrong\n- Cover a variety of topics: budgeting, first credit card, student loans, side hustles, investing, internship salary negotiation, emergency funds, subscriptions, FOMO spending, peer pressure, benefits enrollment, and compound interest\n- Scenarios should escalate in complexity — start simple (move-in week budgeting, first credit card offer) and build to complex (salary negotiation, 401k enrollment, investing)\n- Tone: relatable, slightly witty, specific — not corporate or preachy\n- All three choices must be tempting — none should be obviously dumb. Two are wrong, one is correct.\n- Exactly ONE of choiceA/choiceB/choiceC must have isCorrect: true. The other two must have isCorrect: false.\n\nReturn ONLY valid JSON — no markdown, no preamble, no backticks. Format:\n[\n  {\n    "id": 1,\n    "timestamp": "September — Move-In Week",\n    "scenario": "2-3 sentence vivid scenario description",\n    "choiceA": { "text": "option text", "isCorrect": true },\n    "choiceB": { "text": "option text", "isCorrect": false },\n    "choiceC": { "text": "option text", "isCorrect": false },\n    "explanation": "Why the wrong answers are wrong and what the right choice does long-term. Include a specific number or projection. 2-3 sentences.",\n    "counterfactual": "If you\'d chosen [a wrong choice], by 2035 you\'d likely [specific financial consequence]. 1-2 sentences.",\n    "impact": {\n      "savings": 200,\n      "creditScore": 0,\n      "debt": -500\n    }\n  }\n]\n\nImpact values represent the correct choice\'s effect: savings range -800 to +800, creditScore range -40 to +40 (0 if not credit-related), debt range -2000 to +2000. Correct choice should generally have positive impact.`;
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+async function fetchScenarios(answers) {
+  const res = await fetch('/api/generate-scenarios', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-5-20251001',
-      max_tokens: 8192,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: 'Generate the 18 scenario cards for this player profile. Return only the JSON array.' }],
-    }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answers }),
   });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `API error ${res.status}`);
+    throw new Error(err?.error || `API error ${res.status}`);
   }
 
-  const data = await res.json();
-  const text = (data.content[0].text || '').trim()
-    .replace(/^```(?:json)?\n?/, '')
-    .replace(/\n?```$/, '');
-
-  const parsed = JSON.parse(text);
+  const parsed = await res.json();
   if (!Array.isArray(parsed) || parsed.length < 10) throw new Error('Insufficient scenarios');
   return parsed.slice(0, 18);
 }
@@ -411,8 +382,6 @@ const INITIAL_STATE = {
   currentQuestion: 0,
   answers: {},
   selectedAnswer: null,
-  apiKey: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ANTHROPIC_API_KEY) || '',
-  showApiKeyInput: false,
   scenarios: [],
   apiError: null,
   currentScenarioIndex: 0,
@@ -457,7 +426,6 @@ const card = {
 
 export default function App() {
   const [state, setState] = useState(INITIAL_STATE);
-  const apiKeyRef = useRef('');
 
   const set = (changes) => setState(prev => ({ ...prev, ...changes }));
   const setMetrics = (m) => setState(prev => ({
@@ -483,30 +451,10 @@ export default function App() {
   }
 
   function transitionToLoading(answers) {
-    const keyToUse = state.apiKey.trim();
-    if (!keyToUse) {
-      set({ screen: 'loading', showApiKeyInput: true });
-      return;
-    }
     set({ screen: 'loading' });
     const metrics = calculateStartingMetrics(answers);
     setMetrics(metrics);
-    fetchScenarios(answers, keyToUse)
-      .then(scenarios => set({ scenarios, screen: 'game' }))
-      .catch(err => {
-        console.error('API error, using fallback:', err.message);
-        set({ scenarios: FALLBACK_SCENARIOS, apiError: err.message, screen: 'game' });
-      });
-  }
-
-  function handleApiKeySubmit(key) {
-    const k = key.trim();
-    if (!k) return;
-    const answers = state.answers;
-    set({ apiKey: k, showApiKeyInput: false });
-    const metrics = calculateStartingMetrics(answers);
-    setMetrics(metrics);
-    fetchScenarios(answers, k)
+    fetchScenarios(answers)
       .then(scenarios => set({ scenarios, screen: 'game' }))
       .catch(err => {
         console.error('API error, using fallback:', err.message);
@@ -1139,7 +1087,7 @@ export default function App() {
             </div>
 
             <p style={{ fontSize: 11, opacity: 0.6, textAlign: 'center' }}>
-              fidhacks.vercel.app
+              https://fid-rise-game.vercel.app/
             </p>
           </div>
 
@@ -1158,59 +1106,6 @@ export default function App() {
     );
   };
 
-  const renderApiKeyModal = () => {
-    return (
-      <div style={{
-        position: 'fixed', inset: 0,
-        background: 'rgba(0,0,0,0.6)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 300, padding: 24,
-      }}>
-        <div style={{ ...card, width: '100%', maxWidth: 340 }}>
-          <div style={{ marginBottom: 16, textAlign: 'center' }}>
-            <FidRiseLogo size="md" />
-          </div>
-          <h3 style={{ fontSize: 17, fontWeight: 800, color: C.text, marginBottom: 8 }}>
-            Enter your Anthropic API Key
-          </h3>
-          <p style={{ fontSize: 13, color: C.muted, marginBottom: 16, lineHeight: 1.5 }}>
-            Needed to generate your personalized scenarios. Your key is never stored.
-          </p>
-          <input
-            type="password"
-            placeholder="sk-ant-..."
-            onChange={e => { apiKeyRef.current = e.target.value; }}
-            onKeyDown={e => e.key === 'Enter' && handleApiKeySubmit(apiKeyRef.current)}
-            style={{
-              width: '100%', padding: '12px 14px',
-              borderRadius: 10, border: `1.5px solid ${C.border}`,
-              fontSize: 14, marginBottom: 12, outline: 'none',
-              fontFamily: 'monospace',
-            }}
-          />
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button
-              style={{ ...btn(C.green), flex: 1 }}
-              onClick={() => handleApiKeySubmit(apiKeyRef.current)}
-            >
-              Start Game
-            </button>
-            <button
-              style={{ ...btn('transparent', C.muted), flex: 1, border: `1.5px solid ${C.border}` }}
-              onClick={() => {
-                set({ showApiKeyInput: false });
-                const metrics = calculateStartingMetrics(state.answers);
-                setState(prev => ({ ...prev, metrics, scenarios: FALLBACK_SCENARIOS, screen: 'game' }));
-              }}
-            >
-              Use Demo
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   // ── Root render ──────────────────────────────────────────────────────────────
 
   return (
@@ -1221,7 +1116,6 @@ export default function App() {
       {state.screen === 'game'               && renderGame()}
       {state.screen === 'forecast'           && renderForecast()}
       {state.showShareModal                  && renderShareModal()}
-      {state.showApiKeyInput                 && renderApiKeyModal()}
     </>
   );
 }
