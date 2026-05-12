@@ -68,15 +68,20 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'API key not configured on server' });
 
-  const { answers } = req.body || {};
+  const { answers, count = 10, offset = 0 } = req.body || {};
   if (!answers) return res.status(400).json({ error: 'Missing answers' });
 
   const summary = buildSummary(answers);
 
-  const systemPrompt = `You are a financial education game designer for a hackathon project targeting first-year college women. Generate exactly 10 financial scenarios for a student with this profile:\n${summary}\n\nRules:\n- Each scenario must be genuinely hard — not obviously right or wrong\n- Cover a variety of topics: budgeting, first credit card, student loans, side hustles, investing, internship salary negotiation, emergency funds, subscriptions, FOMO spending, peer pressure, benefits enrollment, and compound interest\n- Scenarios should escalate in complexity — start simple (move-in week budgeting, first credit card offer) and build to complex (salary negotiation, 401k enrollment, investing)\n- Tone: relatable, slightly witty, specific — not corporate or preachy\n- BREVITY IS CRITICAL: First-year college students will not read long text. Every scenario must be skimmable in under 10 seconds. Cut filler words, no flowery openers, no run-on sentences. Aim for the minimum word count that still conveys the choice.\n- All three choices must be tempting — none should be obviously dumb. Two are wrong, one is correct.\n- Exactly ONE of choiceA/choiceB/choiceC must have isCorrect: true. The other two must have isCorrect: false.\n- IMPORTANT: Randomize which of choiceA/choiceB/choiceC is correct across scenarios. Roughly one-third of scenarios should have A correct, one-third B correct, and one-third C correct. Do NOT always put the correct answer in position A.\n- CRITICAL VARIETY REQUIREMENT: Each generation must produce meaningfully different scenarios from any prior generation, even for the same player profile. Vary the specific dollar amounts (e.g. textbook cost: not always $340; subscription totals: not always $143), the friend/character names, the brands/stores mentioned, the framing of each dilemma, and which topics get emphasized. Pick a fresh subset of topics from the list above rather than always covering the same ones in the same order. Do NOT reuse phrasing across runs.\n\nReturn ONLY valid JSON — no markdown, no preamble, no backticks. Format:\n[\n  {\n    "id": 1,\n    "timestamp": "September — Move-In Week",\n    "scenario": "1-2 short sentences, max ~35 words. Punchy and concrete — set the scene fast, no filler.",\n    "choiceA": { "text": "max ~12 words", "isCorrect": true },\n    "choiceB": { "text": "max ~12 words", "isCorrect": false },\n    "choiceC": { "text": "max ~12 words", "isCorrect": false },\n    "explanation": "1 sentence, max ~30 words. Include one specific number or dollar figure.",\n    "counterfactual": "1 short sentence starting with \\"If you\'d chosen X, by 2036 you\'d ...\\". Max ~20 words.",\n    "impact": {\n      "savings": 200,\n      "creditScore": 0,\n      "debt": -500\n    }\n  }\n]\n\nImpact values represent the correct choice\'s effect: savings range -800 to +800, creditScore range -40 to +40 (0 if not credit-related), debt range -2000 to +2000. Correct choice should generally have positive impact.`;
+  // Static portion — same on every request, cached by Anthropic so the second
+  // half of a parallel split (and future replays) reuse this prefix for free.
+  const staticInstructions = `You are a financial education game designer for a hackathon project targeting first-year college women. Generate financial scenarios for a college student.\n\nRules:\n- Each scenario must be genuinely hard — not obviously right or wrong\n- Cover a variety of topics: budgeting, first credit card, student loans, side hustles, investing, internship salary negotiation, emergency funds, subscriptions, FOMO spending, peer pressure, benefits enrollment, and compound interest\n- Scenarios should escalate in complexity — start simple (move-in week budgeting, first credit card offer) and build to complex (salary negotiation, 401k enrollment, investing)\n- Tone: relatable, slightly witty, specific — not corporate or preachy\n- BREVITY IS CRITICAL: First-year college students will not read long text. Every scenario must be skimmable in under 10 seconds. Cut filler words, no flowery openers, no run-on sentences. Aim for the minimum word count that still conveys the choice.\n- All three choices must be tempting — none should be obviously dumb. Two are wrong, one is correct.\n- Exactly ONE of choiceA/choiceB/choiceC must have isCorrect: true. The other two must have isCorrect: false.\n- IMPORTANT: Randomize which of choiceA/choiceB/choiceC is correct across scenarios. Roughly one-third of scenarios should have A correct, one-third B correct, and one-third C correct. Do NOT always put the correct answer in position A.\n- CRITICAL VARIETY REQUIREMENT: Each generation must produce meaningfully different scenarios from any prior generation, even for the same player profile. Vary the specific dollar amounts (e.g. textbook cost: not always $340; subscription totals: not always $143), the friend/character names, the brands/stores mentioned, the framing of each dilemma, and which topics get emphasized. Pick a fresh subset of topics from the list above rather than always covering the same ones in the same order. Do NOT reuse phrasing across runs.\n\nReturn ONLY valid JSON — no markdown, no preamble, no backticks. Format:\n[\n  {\n    "id": 1,\n    "timestamp": "September — Move-In Week",\n    "scenario": "1-2 short sentences, max ~35 words. Punchy and concrete — set the scene fast, no filler.",\n    "choiceA": { "text": "max ~12 words", "isCorrect": true },\n    "choiceB": { "text": "max ~12 words", "isCorrect": false },\n    "choiceC": { "text": "max ~12 words", "isCorrect": false },\n    "explanation": "1 sentence, max ~30 words. Include one specific number or dollar figure.",\n    "counterfactual": "1 short sentence starting with \\"If you\'d chosen X, by 2036 you\'d ...\\". Max ~20 words.",\n    "impact": {\n      "savings": 200,\n      "creditScore": 0,\n      "debt": -500\n    }\n  }\n]\n\nImpact values represent the correct choice\'s effect: savings range -800 to +800, creditScore range -40 to +40 (0 if not credit-related), debt range -2000 to +2000. Correct choice should generally have positive impact.`;
+
+  // Dynamic portion — varies per request, not cached.
+  const dynamicBlock = `PLAYER PROFILE FOR THIS REQUEST:\n${summary}\n\nFor this request, generate EXACTLY ${count} scenarios, numbered starting at id ${offset + 1} through id ${offset + count}.`;
 
   const variationSeed = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-  const userMessage = `Generate the 10 scenario cards for this player profile. Return only the JSON array.\n\nVariation seed: ${variationSeed}. Use this seed to make this generation distinct from any previous generation: vary the specific dollar amounts, friend/character names, brands and stores referenced, the framing of each dilemma, and which subset of topics you emphasize. Do not repeat verbatim phrasing from prior generations.`;
+  const userMessage = `Generate the ${count} scenario cards (ids ${offset + 1}–${offset + count}) for this player profile. Return only the JSON array.\n\nVariation seed: ${variationSeed}. Use this seed to make this generation distinct from any previous generation: vary the specific dollar amounts, friend/character names, brands and stores referenced, the framing of each dilemma, and which subset of topics you emphasize. Do not repeat verbatim phrasing from prior generations.`;
 
   try {
     const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -90,7 +95,10 @@ export default async function handler(req, res) {
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 4096,
         temperature: 1.0,
-        system: systemPrompt,
+        system: [
+          { type: 'text', text: staticInstructions, cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: dynamicBlock },
+        ],
         messages: [{ role: 'user', content: userMessage }],
       }),
     });
@@ -117,11 +125,11 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: `Could not parse model output: ${parseErr.message}`, stage: 'parse' });
     }
 
-    if (!Array.isArray(parsed) || parsed.length < 10) {
-      return res.status(500).json({ error: `Insufficient scenarios returned (got ${Array.isArray(parsed) ? parsed.length : 'non-array'})`, stage: 'validate' });
+    if (!Array.isArray(parsed) || parsed.length < count) {
+      return res.status(500).json({ error: `Insufficient scenarios returned (got ${Array.isArray(parsed) ? parsed.length : 'non-array'}, expected ${count})`, stage: 'validate' });
     }
 
-    return res.status(200).json(parsed.slice(0, 10));
+    return res.status(200).json(parsed.slice(0, count));
   } catch (err) {
     console.error('Handler crash:', err);
     return res.status(500).json({ error: err.message || 'Internal server error', stage: 'handler' });

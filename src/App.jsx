@@ -103,11 +103,11 @@ function calculateStartingMetrics(answers) {
 
 // ─── Anthropic API (via serverless function) ──────────────────────────────────
 
-async function fetchScenarios(answers) {
+async function fetchScenariosHalf(answers, count, offset) {
   const res = await fetch('/api/generate-scenarios', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ answers }),
+    body: JSON.stringify({ answers, count, offset }),
   });
 
   if (!res.ok) {
@@ -116,8 +116,19 @@ async function fetchScenarios(answers) {
   }
 
   const parsed = await res.json();
-  if (!Array.isArray(parsed) || parsed.length < 10) throw new Error('Insufficient scenarios');
-  return parsed.slice(0, 10);
+  if (!Array.isArray(parsed) || parsed.length < count) {
+    throw new Error(`Insufficient scenarios (got ${Array.isArray(parsed) ? parsed.length : 'non-array'})`);
+  }
+  return parsed.slice(0, count);
+}
+
+async function fetchScenarios(answers) {
+  // Two parallel halves so the wall-clock wait is roughly one call, not two.
+  const [first, second] = await Promise.all([
+    fetchScenariosHalf(answers, 5, 0),
+    fetchScenariosHalf(answers, 5, 5),
+  ]);
+  return [...first, ...second];
 }
 
 // ─── Shuffle choice positions so the correct answer isn't always A ────────────
