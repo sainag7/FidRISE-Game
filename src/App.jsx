@@ -754,8 +754,12 @@ export default function App() {
             padding: '6px 16px',
             textAlign: 'center',
             letterSpacing: 0.2,
+            lineHeight: 1.4,
           }}>
-            ⚠️ Offline mode — Claude wasn't reachable, using built-in scenarios
+            ⚠️ Offline mode — using built-in scenarios
+            <div style={{ fontSize: 10, fontWeight: 500, opacity: 0.85, marginTop: 2 }}>
+              {state.apiError}
+            </div>
           </div>
         )}
 

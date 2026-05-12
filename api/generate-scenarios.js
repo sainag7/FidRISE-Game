@@ -87,7 +87,7 @@ export default async function handler(req, res) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20251001',
+        model: 'claude-sonnet-4-6',
         max_tokens: 8192,
         temperature: 1.0,
         system: systemPrompt,
@@ -97,21 +97,33 @@ export default async function handler(req, res) {
 
     if (!anthropicRes.ok) {
       const err = await anthropicRes.json().catch(() => ({}));
-      return res.status(anthropicRes.status).json({ error: err?.error?.message || `API error ${anthropicRes.status}` });
+      console.error('Anthropic API error:', anthropicRes.status, JSON.stringify(err));
+      return res.status(anthropicRes.status).json({
+        error: err?.error?.message || `Anthropic ${anthropicRes.status}`,
+        stage: 'anthropic_request',
+      });
     }
 
     const data = await anthropicRes.json();
-    const text = (data.content[0].text || '').trim()
+    const text = (data.content?.[0]?.text || '').trim()
       .replace(/^```(?:json)?\n?/, '')
       .replace(/\n?```$/, '');
 
-    const parsed = JSON.parse(text);
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (parseErr) {
+      console.error('JSON parse error. Raw text:', text.slice(0, 500));
+      return res.status(500).json({ error: `Could not parse model output: ${parseErr.message}`, stage: 'parse' });
+    }
+
     if (!Array.isArray(parsed) || parsed.length < 10) {
-      return res.status(500).json({ error: 'Insufficient scenarios returned' });
+      return res.status(500).json({ error: `Insufficient scenarios returned (got ${Array.isArray(parsed) ? parsed.length : 'non-array'})`, stage: 'validate' });
     }
 
     return res.status(200).json(parsed.slice(0, 10));
   } catch (err) {
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    console.error('Handler crash:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error', stage: 'handler' });
   }
 }
